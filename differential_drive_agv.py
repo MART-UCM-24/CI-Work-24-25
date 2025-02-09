@@ -261,24 +261,13 @@ def updateFrame(frame):
     if agv.check_collision(bitmap):
        ani.event_source.stop()
     return ax.patches
-# for i in range(100):
-#     agv.move(1)
-#     ax.clear()
-#     ax = bitmap.display(ax=ax)
-#     ax = agv.display(ax)
-#     time.sleep(1)
+
 
 fig,ax = plt.subplots()
 fps = 100 # time between frame in ms
 amountFrames = 300 # amount of frames to call
 # If frames is not specified, it is infinite
 
-# ax.grid(True)
-
-# bitmap.display(ax)
-# #ax.invert_yaxis()
-# agv.display(ax)
-# lidar.display(ax, agv.x, agv.y, agv.angle)
 
 ani = animation.FuncAnimation(fig, updateFrame, frames=range(amountFrames), repeat=False, interval= fps)
 plt.show(block=True)
