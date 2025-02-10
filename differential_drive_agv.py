@@ -1,3 +1,4 @@
+import random
 import time
 from matplotlib import animation, patches
 import numpy as np
@@ -159,22 +160,6 @@ class LIDARSensor:
                         break
         
         return angles, distances
-        # for i, angle in enumerate(angles):
-        #     rad = angle + theta
-        #     for d in range(1, int(self.range / self.map.resolution)):
-        #         dx = x + d * self.map.resolution * np.cos(rad)
-        #         dy = y + d * self.map.resolution * np.sin(rad)
-                
-        #         if self.map.is_occupied(dx, dy):
-        #             distances[i] = d * self.map.resolution
-        #             break
-        #         else:
-        #             distances[i] = d * self.map.resolution
-        #             if distances[i] > self.range:
-        #                 distances[i] = self.range
-        #                 break
-        
-        return angles, distances
 
     def display(self, ax, x, y, theta):
         angles, distances = self.get_readings(x, y, theta)
@@ -182,7 +167,7 @@ class LIDARSensor:
             rad = angle + theta
             end_x = x + distance * np.cos(rad)
             end_y = y + distance * np.sin(rad)
-            ax.plot([x, end_x], [y, end_y], 'b-')
+            ax.plot([x, end_x], [y, end_y], 'b-',linewidth=1)
         return ax
 
 class GridMap:
@@ -214,49 +199,88 @@ class GridMap:
         ax.set_ylim(0, self.height)
         ax.set_aspect('equal')
         return ax
-# Main Function
-# if __name__ == "__main__":
-#     agv = Differential_Drive_AGV()
-#     grid_map = GridMap(width=10, height=10, resolution=0.1)
-#     grid_map.add_obstacle(2, 2, 1, 1)
-#     grid_map.display()
-
-#     lidar = LIDARSensor(range=5, resolution=1, map=grid_map)
+    def find_random_position(self):
+        random.seed()
+        start = 1_000_000
+        while start> 0:
+            x = random.uniform(0, self.width)
+            y = random.uniform(0, self.height)
+            if (not self.is_occupied(x, y) and not self.is_occupied(x + 1, y) 
+                and not self.is_occupied(x - 1, y) and not self.is_occupied(x, y + 1) 
+                and not self.is_occupied(x, y - 1) and not self.is_occupied(x+1,y+1)
+                and not self.is_occupied(x +1,y-1) and not self.is_occupied(x-1,y+1)
+                and not self.is_occupied(x-1, y-1)):
+                return x, y
+            start -= 1
+        raise Exception('No position found')
     
-#     input_shape = (6,)  # [x, y, theta, v, phi, L]
-#     stlm_nn = SLTMNN(input_shape)
-
-#     dt = 0.1  # time step
-#     for _ in range(100):
-#         v = 1  # constant speed
-#         phi = 0.1  # constant steering angle
-#         agv.update(v, phi, dt)
+class NavigationTask:
+    def __init__(self, grid_map):
+        self.grid_map = grid_map
+        self.start_position = self.grid_map.find_random_position()
+        start = 100
+        self.objective_position = self.grid_map.find_random_position()
+        while (start > 0 and self.objective_position[0] == self.start_position[0] and 
+               self.objective_position[1] == self.start_position[1]):
+            self.objective_position = self.grid_map.find_random_position()
+            start -= 1
         
-#         x, y, theta = agv.get_state()
-#         readings = lidar.get_readings(x, y, theta)
-        
-#         print(f"AGV State: x={x:.2f}, y={y:.2f}, theta={theta:.2f}")
-#         print(f"LIDAR Readings: {readings}")
 
-bitmap = GridMap(20, 20, 0.01)
-agv = Differential_Drive_AGV(0.5, 1, 2, np.deg2rad(90), 4, 5)
+    def display(self,ax=None):
+        ax = self.grid_map.display(ax)
+        ax.plot(self.start_position[0], self.start_position[1], 'go', label='Start')
+        ax.plot(self.objective_position[0], self.objective_position[1], 'ro', label='Objective')
+        ax.legend()
+        return ax
+
+bitmap = GridMap(40, 40, 0.01)
+
+
+# Walls
+bitmap.add_obstacle(0, 0, 1, bitmap.height)
+bitmap.add_obstacle(bitmap.width-1, 0, 1, bitmap.height)
+bitmap.add_obstacle(0, 0, bitmap.width,1)
+bitmap.add_obstacle(0, bitmap.height-1, bitmap.width,1)
+
+# Obstacles
+bitmap.add_obstacle(5, 5, 2, 10)
+bitmap.add_obstacle(10, 15, 3, 5)
+bitmap.add_obstacle(15, 25, 2, 8)
+bitmap.add_obstacle(20, 10, 4, 3)
+bitmap.add_obstacle(25, 30, 3, 6)
+bitmap.add_obstacle(30, 5, 2, 10)
+bitmap.add_obstacle(35, 20, 3, 5)
+bitmap.add_obstacle(5, 30, 2, 8)
+bitmap.add_obstacle(10, 35, 4, 3)
+bitmap.add_obstacle(20, 20, 3, 6)
+bitmap.add_obstacle(25, 5, 2, 10)
+bitmap.add_obstacle(30, 25, 3, 5)
+bitmap.add_obstacle(35, 10, 2, 8)
+
+navigation_task = NavigationTask(bitmap)
+
+lidar = LIDARSensor(range=5,map=bitmap,angles=np.linspace(0,2*np.pi,12))
+agv = Differential_Drive_AGV(0.5, 0.81, 1.09, np.deg2rad(90), navigation_task.start_position[0], navigation_task.start_position[1])
+
 #ax = agv.display()
-agv.setSpeed(0.5,0.4) # 
+agv.setSpeed(0.5,0.5) # 
 
-bitmap.add_obstacle(1, 1, 0.5, 0.5)
-bitmap.add_obstacle(2, 2, 0.5, 0.5)
-bitmap.add_obstacle(5, 5, 1.5, 1.5)
-bitmap.add_obstacle(0,0,1,1)
-lidar = LIDARSensor(range=5,map=bitmap,angles=np.linspace(0,2*np.pi,30))
+
+# Display the map with start and objective positions
+
+ax = navigation_task.display()
+ax = agv.display(ax)
+lidar.display(ax,agv.x,agv.y,agv.angle)
+#bitmap.display()
 
 
 def updateFrame(frame):
     pos= agv.move(dt=0.1)
     ax.clear()
-    bitmap.display(ax)
+    navigation_task.display(ax)
     agv.display(ax)
     lidar.display(ax, pos[0], pos[1], pos[2])
-    ax.grid(True)
+    ax.grid(False)
     print("NEXT FRAME")
     if agv.check_collision(bitmap):
        ani.event_source.stop()
