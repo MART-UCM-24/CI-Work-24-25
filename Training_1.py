@@ -23,13 +23,16 @@ plt.ion()
 
 # Initialize a list to store rewards
 episode_rewards = []
+mean_rewards = []
 
 # Create a figure and axis for the plot
 fig, ax = plt.subplots()
-line, = ax.plot(episode_rewards)
+line, = ax.plot(episode_rewards, label='Episode Reward')
+mean_line, = ax.plot(mean_rewards, label='Mean Reward (every 50 episodes)')
 ax.set_xlabel('Episode')
 ax.set_ylabel('Reward')
 ax.set_title('Episode Rewards Over Time')
+ax.legend()
 
 
 # MAP
@@ -85,17 +88,29 @@ for episode in range(1000):
 
         if done:
             break
+    
     episode_rewards.append(episode_reward)  # Save the reward for this episode
+        # Calculate mean reward every 50 episodes
+
+    if (episode + 1) % 50 == 0:
+        mean_reward = np.mean(episode_rewards[-50:])
+        mean_rewards.append(mean_reward)
+    else:
+        mean_rewards.append(mean_rewards[-1] if mean_rewards else episode_reward)
+
     if len(replay_buffer.storage) > 1000:
         ddpg_agent.train(replay_buffer, batch_size=64)
 
     print(f"Episode: {episode}, Reward: {episode_reward}")
     # Save the model after each episode
-    torch.save(ddpg_agent.actor.state_dict(), f"actor_model_episode_{episode}.pth")
-    torch.save(ddpg_agent.critic.state_dict(), f"critic_model_episode_{episode}.pth")
+    if episode%100 == 0:
+        torch.save(ddpg_agent.actor.state_dict(), f"Actor/actor_model_episode_{episode}.pth")
+        torch.save(ddpg_agent.critic.state_dict(), f"Critic/critic_model_episode_{episode}.pth")
     # Update the plot
     line.set_ydata(episode_rewards)
     line.set_xdata(range(len(episode_rewards)))
+    mean_line.set_ydata(mean_rewards)
+    mean_line.set_xdata(range(len(mean_rewards)))
     ax.relim()
     ax.autoscale_view()
     plt.draw()

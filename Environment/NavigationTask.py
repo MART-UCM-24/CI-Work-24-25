@@ -24,5 +24,5 @@ class NavigationTask:
         ax = self.grid_map.display(ax)
         ax.plot(self.start_position[0], self.start_position[1], 'go', label='Start')
         ax.plot(self.objective_position[0], self.objective_position[1], 'ro', label='Objective')
-        ax.legend()
+        #ax.legend()
         return ax

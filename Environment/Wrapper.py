@@ -9,7 +9,7 @@ class DifferentialDriveEnv:
         self.grid_map = grid_map
         self.task = NavigationTask(grid_map)
         self.robot = Differential_Drive_AGV(angle=self.task.start_position[2], x=self.task.start_position[0], y=self.task.start_position[1])
-        self.lidar = LIDARSensor(range=8,map=grid_map,angles=np.linspace(-np.pi/2,np.pi/2,4))
+        self.lidar = LIDARSensor(range=8,map=grid_map,angles=np.linspace(0,2*np.pi,12))
         self.state_dim = 3  # x, y, theta
         self.action_dim = 2  # torques for left and right wheels
         self.max_action = 1.0  # Define the maximum action value
@@ -35,11 +35,17 @@ class DifferentialDriveEnv:
         t_sum = t_sum*t_sum
         t_diff = tr-tl
         t_diff = t_diff*t_diff
-        reward = 5/(distance_to_objective + 1) + 0.005*distance_to_nearest_object + 1.3*t_sum - 0.5*t_diff
+
+        reward = 1600/distance_to_objective + 0.5*distance_to_nearest_object + 5*t_sum - 0.5*t_diff
+        if self.robot.check_collision(self.grid_map):
+            reward = reward/2
         return state, reward, done, {}
 
-    def render(self):
-        ax = self.grid_map.display()
+    def render(self,ax = None):
+        if(ax is None):
+            fig,ax = plt.subplots()
+        ax = self.grid_map.display(ax)
         self.task.display(ax)
         self.robot.display(ax)
-        plt.show()
+        self.lidar.display(ax,self.robot.x,self.robot.y,self.robot.angle)
+        return ax
