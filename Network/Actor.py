@@ -1,20 +1,23 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 class Actor(nn.Module):
-    def __init__(self, state_dim, action_dim, max_action,device):
+    def __init__(self, state_dim, action_dim, max_action,device,dtype=torch.float):
         super(Actor, self).__init__()
-        self.layer1 = nn.Linear(state_dim, 400)
-        self.layer2 = nn.GRU(400, 300)
-        self.layer3 = nn.Linear(300, action_dim)
-        self.max_action = max_action
         self.device = device
-        self.to(device) 
+        self.dtype = dtype
+        self.lstm = nn.LSTM(state_dim, 128, batch_first=True,num_layers=2)
+        self.fc1 = nn.Linear(128, 400)
+        self.fc2 = nn.Linear(400, 300)
+        self.fc3 = nn.Linear(300, action_dim)
+        self.max_action = max_action
+        self = self.to(device=device,dtype=dtype)
 
-    def forward(self, state):
-        state = state.to(self.device)  # Ensure the input is on the correct device
-        x = torch.relu(self.layer1(state))
-        x,_ = self.layer2(x)
-        x = torch.relu(x)
-        x = torch.tanh(self.layer3(x))
-        return x * self.max_action
+    def forward(self, x):
+        x = x.to(self.device)
+        x, _ = self.lstm(x)
+        x = F.relu(self.fc1(x[:, -1, :]))  # Use the output of the last LSTM cell
+        x = F.relu(self.fc2(x))
+        x = torch.tanh(self.fc3(x)) * self.max_action
+        return x

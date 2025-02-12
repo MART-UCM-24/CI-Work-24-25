@@ -6,23 +6,27 @@ from torch import optim
 import torch.nn as nn
 
 class DDPG:
-    def __init__(self, state_dim, action_dim, max_action, device):
+    def __init__(self, state_dim, action_dim, max_action, device,dtype=torch.float):
         self.device = device
-        self.actor = Actor(state_dim, action_dim, max_action, device)
-        self.actor_target = Actor(state_dim, action_dim, max_action, device)
+        self.actor = Actor(state_dim, action_dim, max_action, device,dtype)
+        self.actor_target = Actor(state_dim, action_dim, max_action, device,dtype)
         self.actor_target.load_state_dict(self.actor.state_dict())
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=1e-4)
 
-        self.critic = Critic(state_dim, action_dim, device)
-        self.critic_target = Critic(state_dim, action_dim, device)
+        self.critic = Critic(state_dim, action_dim, device,dtype)
+        self.critic_target = Critic(state_dim, action_dim, device,dtype)
         self.critic_target.load_state_dict(self.critic.state_dict())
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=1e-3)
 
         self.max_action = max_action
 
-    def select_action(self, state):
-        state = torch.FloatTensor(state.reshape(1, -1)).to(self.device)
-        return self.actor(state).cpu().data.numpy().flatten()
+        self.device = device
+        self.dtype = dtype
+        self = self.to(device=device,dtype = dtype)
+
+    def select_action(self, state:torch.Tensor)->torch.Tensor:
+        state = state.to(device=self.device,dtype=self.dtype).reshape(1,-1)
+        return self.actor(state).detach()#.cpu().data.numpy().flatten()
 
     def train(self, replay_buffer, batch_size=64, discount=0.99, tau=0.005):
         state, action, next_state, reward, not_done = replay_buffer.sample(batch_size)

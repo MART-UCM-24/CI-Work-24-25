@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from Environment.GridMap import GridMap
+from Environment.NavigationTask import NavigationTask
 from Network.Actor import Actor
 from Network.Critic import Critic
 from Environment.Wrapper import DifferentialDriveEnv
@@ -16,10 +17,39 @@ action_dim = 2  # Example action dimension
 max_action = 1.0  # Example max action
 device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.mps.is_available() else "cpu")
 
+map_1 = GridMap(40, 40, 0.01)
 
-dtype = torch.float
-agv = DifferentialDriveAGV(torch.tensor([[10],[10],[torch.pi/2]],device=device),device=device,dtype=dtype)
-agv.fowardDynamics(10,10)
+# Walls
+map_1.add_obstacle(0, 0, 1, map_1.height)
+map_1.add_obstacle(map_1.width-1, 0, 1, map_1.height)
+map_1.add_obstacle(0, 0, map_1.width, 1)
+map_1.add_obstacle(0, map_1.height-1, map_1.width, 1)
+
+# Obstacles (maze-like pattern)
+map_1.add_obstacle(5, 5, 1, 10)
+map_1.add_obstacle(5, 15, 10, 1)
+
+map_1.add_obstacle(10, 25, 1, 10)
+map_1.add_obstacle(5, 25, 10, 1)
+
+map_1.add_obstacle(20, 5, 1, 10)
+map_1.add_obstacle(25, 15, 10, 1)
+
+map_1.add_obstacle(35, 5, 1, 10)
+map_1.add_obstacle(30, 10, 10, 1)
+
+map_1.add_obstacle(20, 20, 1, 10)
+map_1.add_obstacle(35, 20, 1, 10)
+
+map_1.add_obstacle(25, 25, 10, 1)
+map_1.add_obstacle(30, 25, 10, 1)
+
+map_1.add_obstacle(17,35,15,1)
+
+
+task = NavigationTask(map_1)
+task.display()
+plt.show()
 
 actor = Actor(state_dim, action_dim, max_action, device)
 critic = Critic(state_dim, action_dim, device)
@@ -67,9 +97,9 @@ fig, ax = plt.subplots()
 
 def update(frame, ax):
     try:
-        global state, episode_reward
-        state_tensor = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(device)
-        action = actor(state_tensor).cpu().detach().numpy().flatten()
+        global state, episode_reward, device
+        state_tensor = state.to(device)
+        action = actor(state_tensor)
         print("Action")
         print(action)
         print("State")
