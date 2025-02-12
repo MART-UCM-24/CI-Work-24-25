@@ -116,5 +116,3 @@ plt.xlabel('Episode')
 plt.ylabel('Reward')
 plt.title('Episode Rewards Over Time')
 plt.show()
-
-print(f"End of program")
