@@ -19,8 +19,8 @@ actor = Actor(state_dim, action_dim, max_action, device)
 critic = Critic(state_dim, action_dim, device)
 
 # Load the saved state dictionaries
-actor.load_state_dict(torch.load("Actor/actor_model_episode_90_rank_0.pth"))
-critic.load_state_dict(torch.load("Critic/critic_model_episode_90_rank_0.pth"))
+actor.load_state_dict(torch.load("Actor/actor_model_episode_200.pth"))
+critic.load_state_dict(torch.load("Critic/critic_model_episode_200.pth"))
 
 # Move the models to the appropriate device
 actor.to(device)
@@ -55,7 +55,7 @@ env = DifferentialDriveEnv(grid_map=map_1)
 # Run a test episode
 state = env.reset()
 episode_reward = 0
-dt = 0.1
+dt = 0.5
 
 fig, ax = plt.subplots()
 

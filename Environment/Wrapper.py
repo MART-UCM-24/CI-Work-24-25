@@ -35,8 +35,12 @@ class DifferentialDriveEnv:
         t_sum = t_sum*t_sum
         t_diff = tr-tl
         t_diff = t_diff*t_diff
-
-        reward = 1600/distance_to_objective + 0.5*distance_to_nearest_object + 5*t_sum - 0.5*t_diff
+        # if distance_to_objective < 1:
+        #     reward = 3000/(distance_to_objective+0.9)
+        # else:
+        #     reward = 1600.0/distance_to_objective
+        # reward = reward+ 50*dist + 0.5*self.robot.speed + 0.5*self.robot.angular_speed
+        reward = 1600/distance_to_objective + 0.5*distance_to_nearest_object + 5*t_sum + 0.5*t_diff
         if self.robot.check_collision(self.grid_map):
             reward = reward/2
         return state, reward, done, {}

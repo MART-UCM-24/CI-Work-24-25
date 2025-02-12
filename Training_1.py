@@ -18,21 +18,21 @@ else:
 
 torch.set_default_device(device)
 
-# Enable interactive mode
-plt.ion()
+# # Enable interactive mode
+# plt.ion()
 
 # Initialize a list to store rewards
 episode_rewards = []
 mean_rewards = []
 
-# Create a figure and axis for the plot
-fig, ax = plt.subplots()
-line, = ax.plot(episode_rewards, label='Episode Reward')
-mean_line, = ax.plot(mean_rewards, label='Mean Reward (every 50 episodes)')
-ax.set_xlabel('Episode')
-ax.set_ylabel('Reward')
-ax.set_title('Episode Rewards Over Time')
-ax.legend()
+# # Create a figure and axis for the plot
+# fig, ax = plt.subplots()
+# line, = ax.plot(episode_rewards, label='Episode Reward')
+# mean_line, = ax.plot(mean_rewards, label='Mean Reward (every 50 episodes)')
+# ax.set_xlabel('Episode')
+# ax.set_ylabel('Reward')
+# ax.set_title('Episode Rewards Over Time')
+# ax.legend()
 
 
 # MAP
@@ -106,20 +106,20 @@ for episode in range(1000):
     if episode%100 == 0:
         torch.save(ddpg_agent.actor.state_dict(), f"Actor/actor_model_episode_{episode}.pth")
         torch.save(ddpg_agent.critic.state_dict(), f"Critic/critic_model_episode_{episode}.pth")
-    # Update the plot
-    line.set_ydata(episode_rewards)
-    line.set_xdata(range(len(episode_rewards)))
-    mean_line.set_ydata(mean_rewards)
-    mean_line.set_xdata(range(len(mean_rewards)))
-    ax.relim()
-    ax.autoscale_view()
-    plt.draw()
-    plt.pause(0.001)  # Pause to update the plot
+    # # Update the plot
+    # line.set_ydata(episode_rewards)
+    # line.set_xdata(range(len(episode_rewards)))
+    # mean_line.set_ydata(mean_rewards)
+    # mean_line.set_xdata(range(len(mean_rewards)))
+    # ax.relim()
+    # ax.autoscale_view()
+    # plt.draw()
+    # plt.pause(0.001)  # Pause to update the plot
     
 np.savetxt("episode_rewards.txt", episode_rewards)
-# Keep the plot open after training
-plt.ioff()
-plt.show()
+# # Keep the plot open after training
+# plt.ioff()
+# plt.show()
 
 
 # # Load the rewards from the file
