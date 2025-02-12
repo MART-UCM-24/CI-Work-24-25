@@ -8,12 +8,18 @@ from Environment.GridMap import GridMap
 from Network.Actor import Actor
 from Network.Critic import Critic
 from Environment.Wrapper import DifferentialDriveEnv
+from Environment.AGV import DifferentialDriveAGV
 
 # Initialize the models
 state_dim = 3  # Example state dimension
 action_dim = 2  # Example action dimension
 max_action = 1.0  # Example max action
 device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.mps.is_available() else "cpu")
+
+
+dtype = torch.float
+agv = DifferentialDriveAGV(torch.tensor([[10],[10],[torch.pi/2]],device=device),device=device,dtype=dtype)
+agv.fowardDynamics(10,10)
 
 actor = Actor(state_dim, action_dim, max_action, device)
 critic = Critic(state_dim, action_dim, device)

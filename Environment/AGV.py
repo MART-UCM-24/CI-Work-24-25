@@ -5,206 +5,238 @@ from matplotlib import animation, patches  # type: ignore
 import matplotlib.pyplot as plt # type: ignore
 
 
-class Wheel:
-    radius:float = 0.26*2/3
-    angular_speed:float = 0 
-    angular_acceleration:float = 0
-    torque:float = 0
-
-    def __init__(self, radius, angular_speed=0,angular_acceleration=0,torque=0):
-        self.radius = radius
-        self.angular_speed = angular_speed
-        self.angular_acceleration = angular_acceleration
-        self.torque = torque
-
-    def setRadius(self, rad):
-        self.radius = rad
-        return self
-
-    def setAngularSpeed(self, w):
-        self.angular_speed = w
-        return self
-    
-    def setSpeed(self,v):
-        self.angular_speed = v/self.radius
-        return self
-
-    def getSpeed(self):
-        return self.radius * self.angular_speed
-
-    def getAngularSpeed(self):
-        return self.angular_speed
-
-    def getRadius(self):
-        return self.radius
-    
-    def setTorque(self,torque):
-        self.torque = torque
-        return self
-    def setAngularAcceleration(self,acc):
-        self.angular_acceleration = acc
-        return self
-    def getAngularAcceleration(self):
-        return self.angular_acceleration
-    def getTorque(self):
-        return self.torque
-    def getForce(self):
-        return self.torque*self.radius
-    def setForce(self,F):
-        self.torque = F/self.radius
-        return self
-
-class Differential_Drive_AGV:
+class DifferentialDriveAGV:
 
     mass:float  = 115 # kg
     width:float = 0.81 # m
     length:float = 1.09 # m
+    height:float = 0.26 # m
+    wheel_radius:float = 0.26/2.0 # m
 
+    # x, y, theta
+    pos:torch.Tensor
+    dpos:torch.Tensor
+    ddpos: torch.Tensor
+
+    # Unused
     max_speed:list = [-2,2] # m/s
     max_acceleration:list = [-0.7,0.7] # m/s
 
-    x:float = 0
-    y:float = 0
-    theta:float = 0
+    def __init__(self, pos_ini:torch.Tensor,radious:float = 0.26/2.0,width:float=0.81,mass:float  = 115,length:float = 1.09,device='cpu',dtype = torch.float32 ):
+        
+        self.wheel_radius = radious
+        self.device = device
+        self.pos = pos_ini
+        self.width = width
+        self.mass = mass
+        self.length = length
 
-    linear_speed:float = 0
-    linear_acceleration:float = 0
+        self.dtype = dtype
+        
+        self.dpos = torch.zeros((3,1),device=device,dtype = dtype)
+        self.ddpos = torch.zeros((3,1),device=device,dtype = dtype)
 
-    angular_speed:float = 0
-    angular_acceleration = 0
+        self.forwardK = torch.tensor(data=[[radious/2.0,radious/2.0],[radious/width,-radious/width]],device=device,dtype=dtype)
+        self.inverseK = self.forwardK.inverse()
 
-    lWheel:Wheel
-    rWheel:Wheel
+        self.J = 1/12 * mass * ( width*width + length*length )
+        self.forwardDyn= torch.tensor(data=[[1/mass,1/mass],[width/self.J,-width/self.J]],device=device,dtype=dtype).mul(1.0/radious)
 
-    def __init__(self, angle, x, y,radious = 0.26*2/3):
-        self.lWheel = Wheel(radious)
-        self.rWheel = Wheel(radious)
-        self.speed = 0
-        self.angle = angle
-        self.angular_speed = 0
-        self.x = x
-        self.y = y
+    def forwardKinematics(self, W_L, W_R)->torch.Tensor:
+        angular_speeds = torch.tensor([W_R,W_L],device=self.device,dtype=self.dtype)
+        speeds = self.forwardK @ angular_speeds
+        # lSpeed = left_angular_speed * self.wheel_radius
+        # rSpeed = right_angular_speed * self.wheel_radius
+        # speed = (lSpeed + rSpeed) / 2
+        # angular_speed = (-lSpeed + rSpeed) / self.width
+        return speeds#np.array([speed, angular_speed])
 
-    def forwardKinematics(self, left_angular_speed, right_angular_speed):
-        lSpeed = left_angular_speed * self.lWheel.getRadius()
-        rSpeed = right_angular_speed * self.rWheel.getRadius()
-        speed = (lSpeed + rSpeed) / 2
-        angular_speed = (-lSpeed + rSpeed) / self.width
-        return np.array([speed, angular_speed])
+    def inverseKinematics(self, speed, angular_speed)->torch.Tensor:
+        speeds = torch.tensor([[speed],[angular_speed]],device=self.device,dtype=self.dtype)
+        angular_speeds = self.inverseK @ speeds #self.forwardK.solve(speeds) 
+        # r_angular_speed = (speed + angular_speed * self.width * 0.5) / self.lWheel.getRadius()
+        # l_angular_speed = (speed - angular_speed * self.width * 0.5) / self.lWheel.getRadius()
+        return angular_speeds#np.array([r_angular_speed, l_angular_speed])
 
-    def inverseKinematics(self, speed, angular_speed):
-        r_angular_speed = (speed + angular_speed * self.width * 0.5) / self.lWheel.getRadius()
-        l_angular_speed = (speed - angular_speed * self.width * 0.5) / self.lWheel.getRadius()
-        return np.array([r_angular_speed, l_angular_speed])
-
-    def fowardDynamics(self,t_r=None,t_l=None):
-        if(t_r is None or t_l is None):
-            t_r = self.rWheel.getTorque()
-            t_l = self.lWheel.getTorque()
-        J = 1/12 * self.mass * ( self.width*self.width + self.length*self.length  )
-        dtype = torch.float32 
-        M_L=torch.tensor(data=[[1/self.mass,1/self.mass],[self.width/J,-self.width/J]],dtype=dtype)
-        M_R=torch.tensor(data=[[t_r],[t_l]],dtype=dtype)
-        acc = 1/self.rWheel.getRadius()*torch.matmul(M_L,M_R)
+    def forwardDynamics(self,t_l,t_r) -> torch.Tensor:
+        M_R=torch.tensor(data=[[t_r],[t_l]],dtype=self.dtype,device=self.device)
+        acc = self.forwardDyn @ M_R
         return acc
     
-    def setTorque(self,tr,tl):
-        self.rWheel.setTorque(tr)
-        self.lWheel.setTorque(tl)
+    def move(self, t_l, t_r , dt) -> torch.Tensor:
+
+        # Compute accelerations
+        acc = self.forwardDynamics(t_l, t_r)
+        
+        # Calculate the components of the acceleration
+        acc_x = acc[0] * torch.cos(self.pos[2])
+        acc_y = acc[0] * torch.sin(self.pos[2])
+        acc_z = acc[1]
+        
+        # Create the acceleration tensor
+        acc_tensor = torch.tensor([[acc_x], [acc_y], [acc_z]], device=self.device, dtype=self.dtype)
+        
+        # Update position and velocity using in-place operations
+        self.pos.add_(self.dpos * dt + 0.5 * acc_tensor * dt * dt)
+        self.dpos.add_(acc_tensor * dt)
+        self.ddpos = acc_tensor
+        
+        return self.pos
+
+    
+    def getState(self) -> torch.Tensor:
+        """
+        Returns the current position tensor.
+        """
+        return self.pos
+
+    def getDerivativeState(self) -> torch.Tensor:
+        """
+        Returns the current derivative of the position tensor.
+        """
+        return self.dpos
+    
+    def setState(self,state:torch.Tensor)->torch.Tensor:
+        self.pos = state.to(device=self.device,dtype=self.dtype)
         return self
-    
-    def move(self, dt):
-        acc = self.fowardDynamics().cpu().numpy()
-        linear_acc = acc[0][0]
-        angular_acc = acc[1][0]
-        self.x = self.x + self.speed*np.cos(self.angle)*dt+0.5*linear_acc*np.cos(self.angle)*dt*dt
-        self.y = self.y + self.speed*np.sin(self.angle)*dt+0.5*linear_acc*np.sin(self.angle)*dt*dt
-        self.angle = self.angle + self.angular_speed*dt + 0.5*angular_acc*dt*dt
-        self.speed = self.speed + linear_acc*dt
-        self.angular_speed = self.angular_acceleration + angular_acc*dt
-        return np.array([self.x, self.y, self.angle])
-    
-    def getState(self):
-        return np.array([self.x, self.y, self.angle])
-    
-    def getDerivateState(self):
-        return np.array([self.speed*np.cos(self.angle),self.speed*np.sin(self.angle), self.angular_speed])
-    
-    # def setAngularSpeed(self,wl,wr):
-    #     self.lWheel.setAngularSpeed(wl)
-    #     self.rWheel.setAngularSpeed(wr)
-    #     self.speed, self.angular_speed = self.forwardKinematics(wl,wr)
-    #     return self
-    
-    # def setSpeed(self,vl,vr):
-    #     self.lWheel.setSpeed(vl)
-    #     self.rWheel.setSpeed(vr)
-    #     self.speed, self.angular_speed = self.forwardKinematics(self.lWheel.getAngularSpeed(),self.rWheel.getAngularSpeed())
-    #     return self
+    def resetState(self,state:torch.Tensor):
+        self.pos = state.to(device=self.device,dtype=self.dtype)
+        self.dpos = torch.zeros_like(self.pos,device=self.device,dtype=self.dtype)
+        self.ddpos = torch.zeros_like(self.pos,device=self.device,dtype=self.dtype)
+        return self
+    def __get_corners__(self)->torch.Tensor:
+        # Center position and orientation
+        center = self.pos[:2]
+        angle = self.pos[2]
 
-    # def setPosition(self, x, y):
-    #     self.x = x
-    #     self.y = y
-    #     return self
+        # Define the relative positions of the corners
+        half_length = self.length / 2
+        half_width = self.width / 2
+        corners = torch.tensor([
+            [-half_length, -half_width],
+            [half_length, -half_width],
+            [half_length, half_width],
+            [-half_length, half_width]
+        ], device=self.device, dtype=self.dtype)
 
-    # def getPosition(self):
-    #     return self.x,self.y 
-    
-    # def getSpeed(self):
-    #     return self.speed,self.angular_speed
-    
-    # def updateSpeeds(self, left_angular_speed, right_angular_speed):
-    #     self.speed, self.angular_speed = self.forwardKinematics(left_angular_speed, right_angular_speed)
-    #     return self
-    
-    def __get_corners__(self):
-        center = [self.x, self.y]
-        length = self.length
-        width = self.width
-        angle = self.angle
-        angle_rad = angle
-        dx_length = length / 2 * np.cos(angle_rad)
-        dy_length = length / 2 * np.sin(angle_rad)
-        dx_width = width / 2 * np.sin(angle_rad)
-        dy_width = width / 2 * np.cos(angle_rad)
-        corners = [
-            (center[0] - dx_length - dx_width, center[1] - dy_length + dy_width),
-            (center[0] + dx_length - dx_width, center[1] + dy_length + dy_width),
-            (center[0] + dx_length + dx_width, center[1] + dy_length - dy_width),
-            (center[0] - dx_length + dx_width, center[1] - dy_length - dy_width)
-        ]
-        return corners
+        # Rotation matrix
+        rotation_matrix = torch.tensor([
+            [torch.cos(angle), -torch.sin(angle)],
+            [torch.sin(angle), torch.cos(angle)]
+        ], device=self.device, dtype=self.dtype)
 
-    def __get_polygon__(self):
-        # 'none' is a color too
-        polygon = patches.Polygon(self.__get_corners__(), closed=True, edgecolor='r', facecolor='r')
+        # Rotate and translate corners
+        rotated_corners = corners @ rotation_matrix.T
+        rotated_corners.add_(center)
+        return rotated_corners
+
+    def __get_polygon__(self)->patches.Polygon:
+        """
+        Returns a matplotlib polygon representing the object.
+        """
+        corners = self.__get_corners__().cpu().numpy()
+        polygon = patches.Polygon(corners, closed=True, edgecolor='r', facecolor='r')
         return polygon
-    
-    def __get_wheel_positions__(self):
-        center = [self.x, self.y]
+
+    def __get_wheel_positions__(self)->torch.Tensor:
+        center = self.pos[:2]
         width = self.width
-        angle_rad = self.angle
-        dx_width = width / 2 * np.sin(angle_rad)
-        dy_width = width / 2 * np.cos(angle_rad)
+        angle_rad = self.pos[2]
         
-        left_wheel = (center[0] - dx_width, center[1] + dy_width)
-        right_wheel = (center[0] + dx_width, center[1] - dy_width)
+        # Define the relative positions of the wheels
+        half_width = width / 2
+        wheel_offsets = torch.tensor([
+            [-half_width, half_width],
+            [half_width, -half_width]
+        ], device=self.device, dtype=self.dtype)
         
-        return left_wheel, right_wheel
-    
-    def display(self, ax = None):
+        # Rotation matrix
+        rotation_matrix = torch.tensor([
+            [torch.cos(angle_rad), -torch.sin(angle_rad)],
+            [torch.sin(angle_rad), torch.cos(angle_rad)]
+        ], device=self.device, dtype=self.dtype)
+        
+        # Rotate and translate wheel positions
+        rotated_wheel_offsets = rotation_matrix @ wheel_offsets
+        wheel_positions = rotated_wheel_offsets.T + center
+        
+        #left_wheel, right_wheel = wheel_positions[0], wheel_positions[1]
+        
+        return wheel_positions
+
+    def display(self, ax=None)->plt.Axes:
+        """
+        Displays the object and its wheels on a matplotlib axis.
+        """
         if ax is None:
-            fig,ax = plt.subplots()
+            fig, ax = plt.subplots()
+        
         polygon = self.__get_polygon__()
         ax.add_patch(polygon)
-        left_wheel, right_wheel = self.__get_wheel_positions__()
-        ax.add_patch(patches.Circle(left_wheel, self.lWheel.getRadius()/5, color='black'))
-        ax.add_patch(patches.Circle(right_wheel, self.rWheel.getRadius()/5, color='black'))
+        
+        left_wheel, right_wheel= self.__get_wheel_positions__()
+        ax.add_patch(patches.Circle(left_wheel.item(), self.wheel_radius / 5, color='black'))
+        ax.add_patch(patches.Circle(right_wheel.item(), self.wheel_radius / 5, color='black'))
+        
         return ax
-    
-    def check_collision(self, grid_map):
+
+    def check_collision(self, grid_map)->bool:
+        """
+        Checks if any of the object's corners are in collision with the grid map.
+        """
         for corner in self.__get_corners__():
-            if grid_map.is_occupied(corner[0], corner[1]):
+            if grid_map.is_occupied(corner[0].item(), corner[1].item()):
                 return True
         return False
+    # def __get_corners__(self):
+    #     pos = self.pos.cpu().numpy()
+    #     center = [pos[0], pos[1]]
+    #     length = self.length
+    #     width = self.width
+    #     angle = pos[2]
+    #     dx_length = length / 2 * np.cos(angle)
+    #     dy_length = length / 2 * np.sin(angle)
+    #     dx_width = width / 2 * np.sin(angle)
+    #     dy_width = width / 2 * np.cos(angle)
+    #     corners = [
+    #         (center[0] - dx_length - dx_width, center[1] - dy_length + dy_width),
+    #         (center[0] + dx_length - dx_width, center[1] + dy_length + dy_width),
+    #         (center[0] + dx_length + dx_width, center[1] + dy_length - dy_width),
+    #         (center[0] - dx_length + dx_width, center[1] - dy_length - dy_width)
+    #     ]
+    #     return corners
+
+    # def __get_polygon__(self):
+    #     # 'none' is a color too
+    #     polygon = patches.Polygon(self.__get_corners__(), closed=True, edgecolor='r', facecolor='r')
+    #     return polygon
+    
+    # def __get_wheel_positions__(self):
+    #     pos = self.pos.cpu().numpy()
+    #     center = [pos[0], pos[1]]
+    #     width = self.width
+    #     angle_rad = pos[2]
+    #     dx_width = width / 2 * np.sin(angle_rad)
+    #     dy_width = width / 2 * np.cos(angle_rad)
+        
+    #     left_wheel = (center[0] - dx_width, center[1] + dy_width)
+    #     right_wheel = (center[0] + dx_width, center[1] - dy_width)
+        
+    #     return left_wheel, right_wheel
+    
+    # def display(self, ax = None):
+    #     if ax is None:
+    #         fig,ax = plt.subplots()
+    #     polygon = self.__get_polygon__()
+    #     ax.add_patch(polygon)
+    #     left_wheel, right_wheel = self.__get_wheel_positions__()
+    #     ax.add_patch(patches.Circle(left_wheel, self.wheel_radius/5, color='black'))
+    #     ax.add_patch(patches.Circle(right_wheel, self.wheel_radius/5, color='black'))
+    #     return ax
+    
+    # def check_collision(self, grid_map):
+    #     for corner in self.__get_corners__():
+    #         if grid_map.is_occupied(corner[0], corner[1]):
+    #             return True
+    #     return False
  

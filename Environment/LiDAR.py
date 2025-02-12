@@ -4,31 +4,27 @@ import matplotlib.pyplot as plt
 from Environment import GridMap
 
 class LIDARSensor:
+    
+
     def __init__(self, range, map,angles):
         self.range = range
         self.map = map
         self.angles = angles
     
     def get_readings(self, x, y, theta):
-        #angles = np.arange(0, 360, self.resolution)
-        angles = self.angles
-        distances = np.zeros(len(angles))
-        for i, angle in enumerate(angles):
-            rad = angle + theta
-            for d in range(1, int(self.range / self.map.resolution)):
-                dx = x + d * self.map.resolution * np.cos(rad)
-                dy = y + d * self.map.resolution * np.sin(rad)
-                
-                if self.map.is_occupied(dx, dy):
+        rads = self.angles + theta  # Convert angles to radians
+        distances = np.full(len(rads), self.range)  # Initialize distances with max range
+        
+        for i, angle in enumerate(rads):
+            dx = x + np.arange(1, int(self.range / self.map.resolution)) * self.map.resolution * np.cos(angle)
+            dy = y + np.arange(1, int(self.range / self.map.resolution)) * self.map.resolution * np.sin(angle)
+            
+            for d, (dx_i, dy_i) in enumerate(zip(dx, dy)):
+                if self.map.is_occupied(dx_i, dy_i):
                     distances[i] = d * self.map.resolution
                     break
-                else:
-                    distances[i] = d * self.map.resolution
-                    if distances[i] > self.range:
-                        distances[i] = self.range
-                        break
         
-        return angles, distances
+        return self.angles, distances  # Convert angles back to degrees
 
     def display(self, ax, x, y, theta):
         angles, distances = self.get_readings(x, y, theta)
