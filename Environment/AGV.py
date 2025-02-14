@@ -32,7 +32,7 @@ class DifferentialDriveAGV:
         self.length = length
 
         self.dtype = dtype
-       
+        
         self.dpos = torch.zeros(3,1,device=device,dtype = dtype)
         self.ddpos = torch.zeros(3,1,device=device,dtype = dtype)
 

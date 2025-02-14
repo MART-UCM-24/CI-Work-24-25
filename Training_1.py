@@ -42,7 +42,7 @@ action_dim = env.action_dim
 max_action = env.max_action
 episodes = 5000
 dt = 0.1 # seconds
-simulation_time = 90 # seconds
+simulation_time = 60*3 # seconds
 max_steps = int(simulation_time / dt)
 
 
@@ -67,22 +67,20 @@ for episode in range(episodes):
         state = next_state
         episode_reward += reward.cpu().numpy()
 
-        if done:
+        if done.cpu().numpy().item():
             break
     
     episode_rewards.append(episode_reward)  # Save the reward for this episode
         # Calculate mean reward every 50 episodes
 
-    if (episode + 1) % 50 == 0:
+    if (episode + 1) > 50:
         mean_reward = np.mean(episode_rewards[-50:])
         mean_rewards.append(mean_reward)
-    else:
-        mean_rewards.append(mean_rewards[-1] if mean_rewards else episode_reward)
 
     if len(replay_buffer.storage) > 1000:
         ddpg_agent.train(replay_buffer, batch_size=64)
     et = time.time()
-    print(f"Episode: {episode}, Reward: {episode_reward}, Mean reward: {mean_reward}, Execution time: {et-st}")
+    print(f"Episode: {episode}, Reward: {episode_reward}, Mean Reward: {mean_reward}, Execution Time: {et-st}")
     counter += 1
     # Save the model after each episode
     if counter > 100:
@@ -114,7 +112,7 @@ torch.save(ddpg_agent.critic.state_dict(), f"Critic/critic_model_episode_{'FINAL
 # # Load the rewards from the file
 # episode_rewards = np.loadtxt("episode_rewards.txt")
 
-# Plot the rewards
+# # Plot the rewards
 # plt.plot(episode_rewards)
 # plt.xlabel('Episode')
 # plt.ylabel('Reward')

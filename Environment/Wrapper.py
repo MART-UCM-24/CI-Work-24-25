@@ -6,10 +6,10 @@ import numpy as np
 import torch
 
 class DifferentialDriveEnv:
-    def __init__(self, grid_map,device = 'cpu',dtype = torch.float32):
+    def __init__(self, grid_map,device = 'cpu',dtype = torch.float):
         self.grid_map = grid_map
         self.task = NavigationTask(grid_map)
-        self.robot = DifferentialDriveAGV(pos_ini=torch.tensor(self.task.start_position,dtype=dtype),device=device,dtype=dtype)
+        self.robot = DifferentialDriveAGV(pos_ini=torch.tensor(self.task.start_position.transpose()),device=device,dtype=dtype)
         self.lidar = LIDARSensor(range=8,map=grid_map,angles=np.linspace(0,2*np.pi,12))
         self.state_dim = 3  # x, y, theta
         self.action_dim = 2  # torques for left and right wheels
@@ -28,7 +28,7 @@ class DifferentialDriveEnv:
         
         # Calculate distance to objective
         distance_to_objective = torch.norm(state[:2] - torch.tensor(self.task.objective_position[:2], device=self.device, dtype=self.dtype))
-        done:torch.BoolTensor = self.robot.check_collision(self.grid_map) or distance_to_objective < 0.1
+        done = self.robot.check_collision(self.grid_map) or distance_to_objective < 0.1
         
         # # Calculate reward
         # distance_to_objective_sq = distance_to_objective ** 2
@@ -46,28 +46,26 @@ class DifferentialDriveEnv:
         reward:torch.FloatTensor = 0.0
         
         # Reward for getting closer to the objective
-        reward += 1000 / (distance_to_objective + 1e-5)  # Add a small value to avoid division by zero
+        reward += 1000 / (distance_to_objective**2 + 1e-5)  # Add a small value to avoid division by zero
         
         # Penalty for collisions
         if self.robot.check_collision(self.grid_map):
-            reward -= 1000
-        
+            reward -= 500
+         
         # Penalty for being too close to obstacles
         x,y,angle = self.robot.pos
         _, dists = self.lidar.get_readings(x.item(), y.item(), angle.item())
         dists_tensor = torch.tensor(dists, device=self.device, dtype=self.dtype)
         distance_to_nearest_object = dists_tensor.min()
-        if distance_to_nearest_object < 0.5:  # Threshold distance to obstacles
-            reward -= 500 / (distance_to_nearest_object + 1e-5)
+        #if distance_to_nearest_object < 0.5:  # Threshold distance to obstacles
+        reward += 5*distance_to_nearest_object**2
         
         # Encourage smooth movements
         t_sum_sq = (tr + tl) ** 2
         t_diff_sq = (tr - tl) ** 2
         reward += 1.3 * t_sum_sq - 0.5 * t_diff_sq
-        
-        done = torch.tensor(done,device=self.device)
         reward = torch.tensor(reward,device=self.device)
-
+        done = torch.tensor(done,device=self.device)
         return state, reward, done, {}
 
     def render(self,ax = None):

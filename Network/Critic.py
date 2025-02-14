@@ -16,17 +16,14 @@ class Critic(nn.Module):
     def forward(self, x, u):
         x = x.to(self.device)
         u = u.to(self.device)
-        
-        # Ensure x and u have the same number of dimensions
+
         if x.dim() == 2:
-            x = x.unsqueeze(1)  # Add a sequence dimension if missing
+            x = x.unsqueeze(1)
         if u.dim() == 2:
-            u = u.unsqueeze(1)  # Add a sequence dimension if missing
+            u = u.unsqueeze(1)
 
-        xu = torch.cat([x, u], dim=-1)  # Concatenate along the last dimension
+        xu = torch.cat([x, u], dim=-1)#.unsqueeze(1)  # Add batch dimension
         xu, _ = self.lstm(xu)
-       
-
         x = F.relu(self.fc1(xu[:, -1, :]))  # Use the output of the last LSTM cell
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
