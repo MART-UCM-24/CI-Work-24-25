@@ -6,10 +6,10 @@ import numpy as np
 import torch
 
 class DifferentialDriveEnv:
-    def __init__(self, grid_map,device = 'cpu',dtype = torch.float):
+    def __init__(self, grid_map,device = 'cpu',dtype = torch.float32):
         self.grid_map = grid_map
         self.task = NavigationTask(grid_map)
-        self.robot = DifferentialDriveAGV(pos_ini=torch.tensor(self.task.start_position.transpose()),device=device,dtype=dtype)
+        self.robot = DifferentialDriveAGV(pos_ini=torch.tensor(self.task.start_position,dtype=dtype),device=device,dtype=dtype)
         self.lidar = LIDARSensor(range=8,map=grid_map,angles=np.linspace(0,2*np.pi,12))
         self.state_dim = 3  # x, y, theta
         self.action_dim = 2  # torques for left and right wheels
@@ -23,12 +23,12 @@ class DifferentialDriveEnv:
         return self.robot.getState()
 
     def step(self, action, dt):
-        tr, tl = action
+        tr, tl = action[0]
         state = self.robot.move(tl, tr, dt=dt)  # Assuming a time step of 0.1 seconds
         
         # Calculate distance to objective
         distance_to_objective = torch.norm(state[:2] - torch.tensor(self.task.objective_position[:2], device=self.device, dtype=self.dtype))
-        done = self.robot.check_collision(self.grid_map) or distance_to_objective < 0.1
+        done:torch.BoolTensor = self.robot.check_collision(self.grid_map) or distance_to_objective < 0.1
         
         # # Calculate reward
         # distance_to_objective_sq = distance_to_objective ** 2
@@ -43,7 +43,7 @@ class DifferentialDriveEnv:
         #     reward /= 2
         
         # Calculate reward
-        reward = 0.0
+        reward:torch.FloatTensor = 0.0
         
         # Reward for getting closer to the objective
         reward += 1000 / (distance_to_objective + 1e-5)  # Add a small value to avoid division by zero
@@ -65,6 +65,9 @@ class DifferentialDriveEnv:
         t_diff_sq = (tr - tl) ** 2
         reward += 1.3 * t_sum_sq - 0.5 * t_diff_sq
         
+        done = torch.tensor(done,device=self.device)
+        reward = torch.tensor(reward,device=self.device)
+
         return state, reward, done, {}
 
     def render(self,ax = None):

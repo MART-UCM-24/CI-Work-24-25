@@ -32,9 +32,9 @@ class DifferentialDriveAGV:
         self.length = length
 
         self.dtype = dtype
-        
-        self.dpos = torch.zeros((3,1),device=device,dtype = dtype)
-        self.ddpos = torch.zeros((3,1),device=device,dtype = dtype)
+       
+        self.dpos = torch.zeros(3,1,device=device,dtype = dtype)
+        self.ddpos = torch.zeros(3,1,device=device,dtype = dtype)
 
         self.forwardK = torch.tensor(data=[[radious/2.0,radious/2.0],[radious/width,-radious/width]],device=device,dtype=dtype)
         self.inverseK = self.forwardK.inverse()
@@ -74,7 +74,7 @@ class DifferentialDriveAGV:
         acc_z = acc[1]
         
         # Create the acceleration tensor
-        acc_tensor = torch.tensor([[acc_x], [acc_y], [acc_z]], device=self.device, dtype=self.dtype)
+        acc_tensor = torch.tensor([acc_x, acc_y, acc_z], device=self.device, dtype=self.dtype)
         
         # Update position and velocity using in-place operations
         self.pos.add_(self.dpos * dt + 0.5 * acc_tensor * dt * dt)

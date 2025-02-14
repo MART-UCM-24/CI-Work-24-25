@@ -22,7 +22,6 @@ class DDPG:
 
         self.device = device
         self.dtype = dtype
-        self = self.to(device=device,dtype = dtype)
 
     def select_action(self, state:torch.Tensor)->torch.Tensor:
         state = state.to(device=self.device,dtype=self.dtype).reshape(1,-1)

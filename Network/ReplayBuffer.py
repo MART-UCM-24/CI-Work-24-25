@@ -21,11 +21,11 @@ class ReplayBuffer:
 
         for i in ind:
             state, action, next_state, reward, done = self.storage[i]
-            batch_states.append(np.array(state, copy=False))
-            batch_actions.append(np.array(action, copy=False))
-            batch_next_states.append(np.array(next_state, copy=False))
-            batch_rewards.append(np.array(reward, copy=False))
-            batch_dones.append(np.array(done, copy=False))
+            batch_states.append(np.array(state))
+            batch_actions.append(np.array(action))
+            batch_next_states.append(np.array(next_state))
+            batch_rewards.append(np.array(reward))
+            batch_dones.append(np.array(done))
 
         return (
             torch.FloatTensor(np.array(batch_states)),
