@@ -17,7 +17,7 @@ class DDPG:
         self.critic_target = Critic(state_dim, action_dim, device,dtype)
         self.critic_target.load_state_dict(self.critic.state_dict())
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=1e-3)
-
+        self.lossFcn = nn.MSELoss()
         self.max_action = max_action
 
         self.device = device
@@ -34,8 +34,10 @@ class DDPG:
         state = state.to(self.device)
         action = action.to(self.device)
         next_state = next_state.to(self.device)
-        reward = reward.to(self.device)
-        not_done = not_done.to(self.device)
+        reward = reward.to(self.device).view((-1,1))
+        not_done = not_done.to(self.device).view((-1,1))
+        not_done  = 1 - not_done
+
 
         # Compute the target Q value
         target_Q = self.critic_target(next_state, self.actor_target(next_state))
@@ -45,7 +47,7 @@ class DDPG:
         current_Q = self.critic(state, action)
 
         # Compute critic loss
-        critic_loss = nn.MSELoss()(current_Q, target_Q)
+        critic_loss = self.lossFcn(current_Q, target_Q)
 
         # Optimize the critic
         self.critic_optimizer.zero_grad()

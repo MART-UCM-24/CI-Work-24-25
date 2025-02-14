@@ -16,7 +16,11 @@ class Critic(nn.Module):
     def forward(self, x, u):
         x = x.to(self.device)
         u = u.to(self.device)
-
+        if x.dim() == 1:
+            x = x.view((-1,1))
+        if u.dim() == 1:
+            u = u.view((-1,1))
+            
         if x.dim() == 2:
             x = x.unsqueeze(1)
         if u.dim() == 2:

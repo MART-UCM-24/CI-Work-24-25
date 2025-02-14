@@ -16,7 +16,7 @@ class DifferentialDriveAGV:
     # x, y, theta
     pos:torch.Tensor
     dpos:torch.Tensor
-    ddpos: torch.Tensor
+    # ddpos: torch.Tensor
 
     # Unused
     max_speed:list = [-2,2] # m/s
@@ -34,28 +34,23 @@ class DifferentialDriveAGV:
         self.dtype = dtype
         
         self.dpos = torch.zeros(3,1,device=device,dtype = dtype)
-        self.ddpos = torch.zeros(3,1,device=device,dtype = dtype)
+        # self.ddpos = torch.zeros(3,1,device=device,dtype = dtype)
 
         self.forwardK = torch.tensor(data=[[radious/2.0,radious/2.0],[radious/width,-radious/width]],device=device,dtype=dtype)
         self.inverseK = self.forwardK.inverse()
 
         self.J = 1/12 * mass * ( width*width + length*length )
         self.forwardDyn= torch.tensor(data=[[1/mass,1/mass],[width/self.J,-width/self.J]],device=device,dtype=dtype).mul(1.0/radious)
+        self.inverseDyn = self.forwardDyn.inverse()
 
     def forwardKinematics(self, W_L, W_R)->torch.Tensor:
         angular_speeds = torch.tensor([W_R,W_L],device=self.device,dtype=self.dtype)
         speeds = self.forwardK @ angular_speeds
-        # lSpeed = left_angular_speed * self.wheel_radius
-        # rSpeed = right_angular_speed * self.wheel_radius
-        # speed = (lSpeed + rSpeed) / 2
-        # angular_speed = (-lSpeed + rSpeed) / self.width
         return speeds#np.array([speed, angular_speed])
 
     def inverseKinematics(self, speed, angular_speed)->torch.Tensor:
         speeds = torch.tensor([[speed],[angular_speed]],device=self.device,dtype=self.dtype)
-        angular_speeds = self.inverseK @ speeds #self.forwardK.solve(speeds) 
-        # r_angular_speed = (speed + angular_speed * self.width * 0.5) / self.lWheel.getRadius()
-        # l_angular_speed = (speed - angular_speed * self.width * 0.5) / self.lWheel.getRadius()
+        angular_speeds = self.inverseK @ speeds
         return angular_speeds#np.array([r_angular_speed, l_angular_speed])
 
     def forwardDynamics(self,t_l,t_r) -> torch.Tensor:
@@ -63,23 +58,33 @@ class DifferentialDriveAGV:
         acc = self.forwardDyn @ M_R
         return acc
     
+    def inverseDynamics(self,acc_L,acc_A) -> torch.Tensor:
+        M_R = torch.tensor(data=[[acc_L],[acc_A]],dtype=self.dtype,device=self.device)
+        torques = self.inverseDyn @ M_R
+        return torques
+    
     def move(self, t_l, t_r , dt) -> torch.Tensor:
-
         # Compute accelerations
         acc = self.forwardDynamics(t_l, t_r)
-        
-        # Calculate the components of the acceleration
-        acc_x = acc[0] * torch.cos(self.pos[2])
-        acc_y = acc[0] * torch.sin(self.pos[2])
-        acc_z = acc[1]
-        
-        # Create the acceleration tensor
-        acc_tensor = torch.tensor([acc_x, acc_y, acc_z], device=self.device, dtype=self.dtype)
-        
+
+        # Rotation matrix for the current orientation
+        rotation_matrix = torch.tensor([
+            [torch.cos(self.pos[2]), -torch.sin(self.pos[2]), 0],
+            [torch.sin(self.pos[2]),  torch.cos(self.pos[2]), 0],
+            [0, 0, 1]
+        ], device=self.device, dtype=self.dtype)
+
+        # Acceleration vector in the local frame
+        acc_local = torch.tensor([acc[0], 0, acc[1]], device=self.device, dtype=self.dtype)
+        #v_local = torch.tensor([self.dpos[0],0,self.dpos[1]], device=self.device, dtype=self.dtype)
+
+        # Transform acceleration to the global frame
+        acc_global = rotation_matrix @ acc_local
+        v_global = rotation_matrix @ self.dpos
+
         # Update position and velocity using in-place operations
-        self.pos.add_(self.dpos * dt + 0.5 * acc_tensor * dt * dt)
-        self.dpos.add_(acc_tensor * dt)
-        self.ddpos = acc_tensor
+        self.pos.add_(v_global * dt + 0.5 * acc_global * dt * dt)
+        self.dpos.add_(acc_local * dt)
         
         return self.pos
 
@@ -94,8 +99,18 @@ class DifferentialDriveAGV:
         """
         Returns the current derivative of the position tensor.
         """
-        return self.dpos
+        # Rotation matrix for the current orientation
+        rotation_matrix = torch.tensor([
+            [torch.cos(self.pos[2]), -torch.sin(self.pos[2]), 0],
+            [torch.sin(self.pos[2]),  torch.cos(self.pos[2]), 0],
+            [0, 0, 1]
+        ], device=self.device, dtype=self.dtype)
+        v = torch.tensor([self.dpos[0], 0 , self.dpos[1]], device=self.device, dtype=self.dtype)
+        return rotation_matrix @ v
     
+    def getSpeeds(self)->torch.Tensor:
+        return self.dpos
+
     def setState(self,state:torch.Tensor)->torch.Tensor:
         self.pos = state.to(device=self.device,dtype=self.dtype)
         return self

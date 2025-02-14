@@ -7,7 +7,7 @@ class Actor(nn.Module):
         super(Actor, self).__init__()
         self.device = device
         self.dtype = dtype
-        self.lstm = nn.LSTM(state_dim, 128, batch_first=True,num_layers=2)
+        self.lstm = nn.LSTM(state_dim, 128, batch_first=True,num_layers=2,dropout=0.1)
         self.fc1 = nn.Linear(128, 400)
         self.fc2 = nn.Linear(400, 300)
         self.fc3 = nn.Linear(300, action_dim)
@@ -16,14 +16,12 @@ class Actor(nn.Module):
 
     def forward(self, x):
         x = x.to(self.device)
-
+        if x.dim() == 1:
+            x = x.view((-1,1))
         if x.dim() == 2:
             x = x.unsqueeze(1)
         x,_=self.lstm(x)
-        if x.dim() == 3:
-            x = F.relu(self.fc1(x[:,-1,:]))
-        else:
-            raise ValueError("Unexpected tensor shape after LSTM: {}".format(x.shape))
+        x = F.relu(self.fc1(x[:,-1,:]))
         #x, _ = self.lstm(x)
         #x = F.relu(self.fc1(x[:, -1, :]))  # Use the output of the last LSTM cell
         x = F.relu(self.fc2(x))

@@ -1,4 +1,4 @@
-from Environment.Map_1 import Map_1
+from Environment.Maps import Map_1
 from Environment.Wrapper import DifferentialDriveEnv
 from Network.ReplayBuffer import ReplayBuffer
 from Network.DDPG import DDPG
