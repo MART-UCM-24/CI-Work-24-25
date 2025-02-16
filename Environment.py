@@ -66,7 +66,7 @@ class LIDARSensor:
     
     def get_readings(self, x, y, theta):
         rads = self.angles + theta  # Convert angles to radians
-        distances = np.full(len(rads), self.range)  # Initialize distances with max range
+        distances = np.full(len(rads), self.range,dtype=np.float32)  # Initialize distances with max range
         
         for i, angle in enumerate(rads):
             dx = x + np.arange(1, int(self.range / self.map.resolution)) * self.map.resolution * np.cos(angle)
@@ -118,7 +118,7 @@ class DifferentialDriveAGV:
         self.dtype = dtype
         
         self.dpos = torch.zeros(3,device=device,dtype = dtype)
-        # self.ddpos = torch.zeros(3,1,device=device,dtype = dtype)
+        self.ddpos = torch.zeros(3,1,device=device,dtype = dtype)
 
         self.forwardK = torch.tensor(data=[[radious/2.0,radious/2.0],[radious/width,-radious/width]],device=device,dtype=dtype)
         self.inverseK = self.forwardK.inverse()
@@ -169,7 +169,7 @@ class DifferentialDriveAGV:
         # Update position and velocity using in-place operations
         self.pos.add_(v_global * dt + 0.5 * acc_global * dt * dt)
         self.dpos.add_(acc_local * dt)
-        
+        self.ddpos = acc_local 
         return self.pos
     
     def getState(self) -> torch.Tensor:
@@ -192,15 +192,16 @@ class DifferentialDriveAGV:
         return rotation_matrix @ v
     
     def getSpeeds(self)->torch.Tensor:
-        return self.dpos
+        return self.dpos.clone()
 
     def setState(self,state:torch.Tensor)->torch.Tensor:
         self.pos = state.to(device=self.device,dtype=self.dtype)
-        return self
+        return self.pos.clone()
     
     def resetState(self,state:torch.Tensor):
         self.pos = state.to(device=self.device,dtype=self.dtype)
         self.dpos = torch.zeros_like(self.dpos,device=self.device,dtype=self.dtype)
+        self.ddpos = torch.zeros_like(self.ddpos,device=self.device,dtype=self.dtype)
         return self
     
     def __get_corners__(self)->torch.Tensor:
@@ -320,27 +321,71 @@ class DifferentialDriveEnv:
         self.task = NavigationTask(grid_map)
         self.robot = DifferentialDriveAGV(pos_ini=torch.tensor(self.task.start_position.transpose()),device=device,dtype=dtype)
         self.lidar = LIDARSensor(range=8,map=grid_map,angles=np.linspace(0,2*np.pi,12))
-        self.state_dim = 3  # x, y, theta
         self.action_dim = 2  # torques for left and right wheels
         maxTorque = self.robot.inverseDynamics(self.robot.max_acceleration,0)
         maxT = maxTorque[0].item()
         self.max_action = torch.tensor([maxT,maxT],device=device,dtype=dtype)  # Define the maximum action value
         self.device = device
         self.dtype = dtype
+        self.state_dim = len(self.__get_state__())
 
     def reset(self):
         self.task.update()
         self.robot.resetState(torch.tensor(self.task.start_position.transpose(),device=self.device,dtype=self.dtype))
-        return self.robot.getState()
+        state = self.__get_state__()
+        return state
 
     def step(self, action, dt):
         tr,tl= action[0]
         # tl,tr= self.robot.inverseDynamics(acc_L, acc_W)
         # Here another controler would be neccessary
-        state = self.robot.move(tl, tr, dt=dt)  # Assuming a time step of 0.1 seconds
+        self.robot.move(tl, tr, dt=dt)  # Assuming a time step of 0.1 seconds
         
+        #if distance_to_nearest_object < 0.5:  # Threshold distance to obstacles
+        reward,done = self.__calulate_reward__(tl,tr)
+        # Get staeçte
+        state = self.__get_state__()
+        return state, reward, done, {}
+    
+    def __get_state__(self):
+        distance_to_nearest_object = self.__distances_of_collision__().min()
+        distance_to_objective = self.__calculate_distance_to_objective__()
+        speeds =self.robot.getSpeeds()
+        angular_speeds = self.robot.inverseKinematics(speeds[0].item(),speeds[2].item())
+        accs = self.robot.ddpos.clone()
+
+        if distance_to_nearest_object.dim() == 0:
+            distance_to_nearest_object = distance_to_nearest_object.view((-1,1))
+        if distance_to_objective.dim() == 0:
+            distance_to_objective = distance_to_objective.view((-1,1))
+
+        if distance_to_nearest_object.dim() > 1:
+            distance_to_nearest_object.squeeze_(distance_to_nearest_object.dim()-1)
+        if angular_speeds.dim() > 1:
+            angular_speeds.squeeze_(angular_speeds.dim()-1)
+        if accs.dim() > 1:
+            accs.squeeze_(accs.dim()-1)
+        if distance_to_objective.dim() >1:
+            distance_to_objective.squeeze_(distance_to_objective.dim()-1)
+
+        state = torch.cat([angular_speeds,accs,distance_to_nearest_object,distance_to_objective],0)
+        state.to(device=self.device)
+        return state
+    
+    def __distances_of_collision__(self):
+        x,y,angle = self.robot.pos
+        _, dists = self.lidar.get_readings(x.item(), y.item(), angle.item())
+        dists_tensor = torch.tensor(dists, device=self.device, dtype=self.dtype)
+        return dists_tensor
+
+    def __calculate_distance_to_objective__(self):
+        distance_to_objective = torch.norm(self.robot.pos[:2] - torch.tensor(self.task.objective_position[:2], device=self.device, dtype=self.dtype))
+        return distance_to_objective
+    
+    def __calulate_reward__(self,tl,tr):
+                
         # Calculate distance to objective
-        distance_to_objective = torch.norm(state[:2] - torch.tensor(self.task.objective_position[:2], device=self.device, dtype=self.dtype))
+        distance_to_objective = self.__calculate_distance_to_objective__()
         done = self.robot.check_collision(self.grid_map) or (distance_to_objective < 0.1).cpu().item()
         
         # Calculate reward
@@ -354,19 +399,15 @@ class DifferentialDriveEnv:
             reward -= 500
          
         # Penalty for being too close to obstacles
-        x,y,angle = self.robot.pos
-        _, dists = self.lidar.get_readings(x.item(), y.item(), angle.item())
-        dists_tensor = torch.tensor(dists, device=self.device, dtype=self.dtype)
-        distance_to_nearest_object = dists_tensor.min()
+        distance_to_nearest_object = self.__distances_of_collision__().min()
         #if distance_to_nearest_object < 0.5:  # Threshold distance to obstacles
         reward += 0.5*distance_to_nearest_object**2
         
         # Encourage smooth movements
         reward += 5 * ((tl+tr) ** 2) - 0.5 * ((tl-tr) ** 2)
-        #reward = torch.tensor(reward,device=self.device)
         done = torch.tensor(done,device=self.device)
-        return state, reward, done, {}
-
+        return reward,done
+    
     def render(self,ax = None):
         if(ax is None):
             fig,ax = plt.subplots()

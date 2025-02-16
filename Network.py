@@ -243,10 +243,8 @@ class DDPG():
         target_Q = reward + ((1 - done) * self.discount * target_Q).detach()
         # no grad until here
 
-        # Get current Q estimate
+        # Calculate Critic Loss
         current_Q = self.critic(state, action)
-
-        # Compute critic loss
         critic_loss = self.lossFcn(current_Q, target_Q)
 
         # Optimize the critic
@@ -255,9 +253,10 @@ class DDPG():
         self.critic_optimizer.step()
         self.critic_scheduler.step()
 
-        # Compute actor loss
-        actor_loss = -self.critic(state, self.actor(state)).mean()
-
+        # Get Actor loss
+        actor_loss = -self.critic(state, self.actor(state))
+        actor_loss = actor_loss.mean()
+        
         # Optimize the actor
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
